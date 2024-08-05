@@ -5,11 +5,11 @@ function Set-CIPPAssignedPolicy {
         $PolicyId,
         $Type,
         $TenantFilter,
-        $PlatformType = 'deviceManagement',
+        $PlatformType,
         $APIName = 'Assign Policy',
         $ExecutingUser
     )
-
+    if (!$PlatformType) { $PlatformType = 'deviceManagement' }
     try {
         $assignmentsObject = switch ($GroupName) {
             'allLicensedUsers' {
@@ -69,13 +69,17 @@ function Set-CIPPAssignedPolicy {
         $assignmentsObject = [PSCustomObject]@{
             assignments = @($assignmentsObject)
         }
+
+        $AssignJSON = ($assignmentsObject | ConvertTo-Json -Depth 10 -Compress)
+        Write-Host "AssignJSON: $AssignJSON"
         if ($PSCmdlet.ShouldProcess($GroupName, "Assigning policy $PolicyId")) {
-            $null = New-GraphPOSTRequest -uri "https://graph.microsoft.com/beta/$($PlatformType)/$Type('$($PolicyId)')/assign" -tenantid $tenantFilter -type POST -body ($assignmentsObject | ConvertTo-Json -Depth 10)
-            Write-LogMessage -user $ExecutingUser -API $APIName -message "Assigned Policy to $($GroupName)" -Sev 'Info' -tenant $TenantFilter
+            Write-Host "https://graph.microsoft.com/beta/$($PlatformType)/$Type('$($PolicyId)')/assign"
+            $null = New-GraphPOSTRequest -uri "https://graph.microsoft.com/beta/$($PlatformType)/$Type('$($PolicyId)')/assign" -tenantid $tenantFilter -type POST -body $AssignJSON
+            Write-LogMessage -user $ExecutingUser -API $APIName -message "Assigned $GroupName to Policy $PolicyId" -Sev 'Info' -tenant $TenantFilter
         }
-        return "Assigned policy to $($GroupName) Policy ID is $($PolicyId)."
     } catch {
-        Write-LogMessage -user $ExecutingUser -API $APIName -message "Failed to assign Policy to $GroupName. Policy ID is $($PolicyId)." -Sev 'Error' -tenant $TenantFilter -LogData (Get-CippException -Exception $_)
-        return "Could not assign policy to $GroupName. Policy ID is $($PolicyId). Error: $($_.Exception.Message)"
+        #$ErrorMessage = Get-CippException -Exception $_
+        $ErrorMessage = Get-NormalizedError -Message $_.Exception.Message
+        Write-LogMessage -user $ExecutingUser -API $APIName -message "Failed to assign $GroupName to Policy $PolicyId. Error:$ErrorMessage" -Sev 'Error' -tenant $TenantFilter -LogData $ErrorMessage
     }
 }
